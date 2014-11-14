@@ -49,9 +49,9 @@ bool loadManifest (const QString &fileName)
 		QTextStream stream (&file);
 
 		static const QRegExp re ("DIST (.*) (\\d*) "
-								 "RMD160 (.*) "
-								 "SHA1 (.*) "
-								 "SHA256 (.*)");
+								 "\\w+ (.*) "
+								 "\\w+ (.*) "
+								 "\\w+ (.*)");
 
 		while (result && !stream.atEnd()) {
 			const QString str = stream.readLine ();

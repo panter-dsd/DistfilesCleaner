@@ -5,6 +5,7 @@ __author__ = 'panter.dsd@gmail.com'
 import os
 import sys
 import subprocess
+import humansize
 
 
 def extract_file_name(manifest_string: str) -> str:
@@ -39,7 +40,11 @@ def load_files_from_manifests_folder(folder_name: str) -> list:
 
 
 def portage_env() -> list:
-    return subprocess.check_output(["emerge", "--info"]).decode("utf-8").split("\n")
+    if not hasattr(portage_env, "cache"):
+        portage_env.cache = None
+    if not portage_env.cache:
+        portage_env.cache = subprocess.check_output(["emerge", "--info"]).decode("utf-8").split("\n")
+    return portage_env.cache
 
 
 def extract_path(line: str) -> list:
@@ -82,7 +87,13 @@ def files_for_clean() -> dict:
     for distdir_entry in os.listdir(distdir_path):
         full_entry_name = distdir_path + "/" + distdir_entry
 
-        if not file_names.count(distdir_entry) and os.path.isfile(full_entry_name):
+        not_found = False
+        try:
+            file_names.remove(distdir_entry)
+        except ValueError:
+            not_found = True
+
+        if not_found and os.path.isfile(full_entry_name):
             not_found_files[full_entry_name] = os.path.getsize(full_entry_name)
 
     return not_found_files
@@ -93,9 +104,18 @@ def delete_files(files: list):
         os.remove(file_name)
 
 
+def print_result(files: dict):
+    total_size = 0
+    for key, value in files.items():
+        print("[ {:>10} ] {}".format(humansize.approximate_size(value), key))
+        total_size += value
+    print("==========================================================================================")
+    print("[ {:>10} ] Total size".format(humansize.approximate_size(total_size)))
+
+
 def main():
     files = files_for_clean()
-    print(files)
+    print_result(files)
 
     if sys.argv.count("--delete"):
         delete_files(files.keys())
@@ -103,3 +123,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    sys.exit(0)

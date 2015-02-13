@@ -6,6 +6,7 @@ import os
 import sys
 import subprocess
 import humansize
+import re
 
 
 def extract_file_name(manifest_string: str) -> str:
@@ -41,14 +42,12 @@ def load_files_from_manifests_folder(folder_name: str) -> list:
 
 def portage_env() -> list:
     if not hasattr(portage_env, "cache"):
-        portage_env.cache = None
-    if not portage_env.cache:
         portage_env.cache = subprocess.check_output(["emerge", "--info"]).decode("utf-8").split("\n")
     return portage_env.cache
 
 
 def extract_path(line: str) -> list:
-    return line.strip('"').split(' ')
+    return line.strip('"').split(' ') if line else list()
 
 
 def emerge_value(key: str) -> str:
@@ -62,8 +61,23 @@ def emerge_value(key: str) -> str:
     return value
 
 
-def manifests_folders() -> list:
+def old_portage_manifest_folders() -> list:
     return extract_path(emerge_value("PORTDIR")) + extract_path(emerge_value("PORTDIR_OVERLAY"))
+
+def new_portage_manifest_folders() -> list:
+    path_regexp = re.compile("\s*location: (.*)")
+
+    result = []
+    for line in portage_env():
+        match = path_regexp.match(line)
+        if match:
+            result.append(match.group(1))
+
+    return result
+
+def manifests_folders() -> list:
+    result = old_portage_manifest_folders()
+    return result if result else new_portage_manifest_folders()
 
 
 def load_file_names() -> list:
@@ -71,6 +85,9 @@ def load_file_names() -> list:
 
     for folder_name in manifests_folders():
         file_names += load_files_from_manifests_folder(folder_name)
+
+    if not file_names:
+        print("Not found manifests")
 
     return file_names
 
@@ -81,6 +98,9 @@ def distdir() -> str:
 
 def files_for_clean() -> dict:
     file_names = load_file_names()
+    if not file_names:
+        return dict()
+    
     not_found_files = dict()
     distdir_path = distdir()
 

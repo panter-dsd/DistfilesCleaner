@@ -46,12 +46,9 @@ def extract_path(line: str) -> list:
 
 def emerge_value(key: str) -> str:
     if not hasattr(emerge_value, "values"):
-        emerge_value.values = dict()
         key_value_lines = (line for line in portage_env() if line.count("=") == 1)
-
-        for line in key_value_lines:
-            key_value = line.split('=')
-            emerge_value.values[key_value[0]] = key_value[1]
+        key_value = (line.split('=') for line in key_value_lines)
+        emerge_value.values = {k: v for k, v in key_value}
 
     try:
         return emerge_value.values[key]
@@ -68,8 +65,7 @@ def new_portage_manifest_folders() -> list:
 
 
 def manifests_folders() -> list:
-    result = old_portage_manifest_folders()
-    return result if result else new_portage_manifest_folders()
+    return old_portage_manifest_folders() or new_portage_manifest_folders()
 
 
 def load_file_names() -> iter:

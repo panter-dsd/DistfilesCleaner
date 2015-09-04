@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-__author__ = 'panter.dsd@gmail.com'
+# __author__ = 'panter.dsd@gmail.com'
 
 import os
 import sys
 import subprocess
+
 import humansize
-import re
 
 
 def extract_file_name(manifest_string: str) -> str:
@@ -15,29 +15,23 @@ def extract_file_name(manifest_string: str) -> str:
         else str()
 
 
-def load_files_from_manifest(manifest_file_name: str) -> list:
+def load_files_from_manifest(manifest_file_name: str) -> iter:
     print("Parse " + manifest_file_name)
 
-    file_names = []
-
     with open(manifest_file_name, "r") as file:
-        for line in file.readlines():
-            file_name = extract_file_name(line)
-            if file_name:
-                file_names.append(file_name)
-
-    return file_names
+        file_names = (extract_file_name(line) for line in file.readlines())
+        return (file_name for file_name in file_names if file_name)
 
 
-def load_files_from_manifests_folder(folder_name: str) -> list:
-    file_names = []
+def __manifest_files(files: list):
+    return (file_name for file_name in files if file_name == "Manifest")
 
-    for root, subFolders, files in os.walk(folder_name):
-        for file_name in files:
-            if file_name == "Manifest":
-                file_names += load_files_from_manifest(root + "/" + file_name)
 
-    return file_names
+def load_files_from_manifests_folder(folder_name: str) -> iter:
+    for root, _, files in os.walk(folder_name):
+        for file_name in __manifest_files(files):
+            for name in load_files_from_manifest(root + "/" + file_name):
+                yield name
 
 
 def portage_env() -> list:
@@ -51,75 +45,67 @@ def extract_path(line: str) -> list:
 
 
 def emerge_value(key: str) -> str:
-    value = str()
+    if not hasattr(emerge_value, "values"):
+        emerge_value.values = dict()
+        key_value_lines = (line for line in portage_env() if line.count("=") == 1)
 
-    for line in portage_env():
-        if line.startswith(key + "="):
-            value = line.split('=')[1]
-            break
+        for line in key_value_lines:
+            key_value = line.split('=')
+            emerge_value.values[key_value[0]] = key_value[1]
 
-    return value
+    try:
+        return emerge_value.values[key]
+    except KeyError:
+        return str()
 
 
 def old_portage_manifest_folders() -> list:
     return extract_path(emerge_value("PORTDIR")) + extract_path(emerge_value("PORTDIR_OVERLAY"))
 
+
 def new_portage_manifest_folders() -> list:
-    path_regexp = re.compile("\s*location: (.*)")
+    return [line.strip().split(' ')[1] for line in portage_env() if "location: " in line]
 
-    result = []
-    for line in portage_env():
-        match = path_regexp.match(line)
-        if match:
-            result.append(match.group(1))
-
-    return result
 
 def manifests_folders() -> list:
     result = old_portage_manifest_folders()
     return result if result else new_portage_manifest_folders()
 
 
-def load_file_names() -> list:
-    file_names = []
-
+def load_file_names() -> iter:
     for folder_name in manifests_folders():
-        file_names += load_files_from_manifests_folder(folder_name)
-
-    if not file_names:
-        print("Not found manifests")
-
-    return file_names
+        for file_name in load_files_from_manifests_folder(folder_name):
+            yield file_name
 
 
 def distdir() -> str:
     return extract_path(emerge_value("DISTDIR"))[0]
 
 
+def __remove(container: set, entry: str):
+    try:
+        container.remove(entry)
+        return True
+    except KeyError:
+        return False
+
+
+def __files_not_in_container(path: str, container: set) -> iter:
+    for file_name in os.listdir(path):
+        full_file_name = path + "/" + file_name
+        if not __remove(container, file_name) and os.path.isfile(full_file_name):
+            yield full_file_name
+
+
 def files_for_clean() -> dict:
-    file_names = load_file_names()
-    if not file_names:
-        return dict()
-    
-    not_found_files = dict()
-    distdir_path = distdir()
+    file_names = set(load_file_names())
 
-    for distdir_entry in os.listdir(distdir_path):
-        full_entry_name = distdir_path + "/" + distdir_entry
-
-        not_found = False
-        try:
-            file_names.remove(distdir_entry)
-        except ValueError:
-            not_found = True
-
-        if not_found and os.path.isfile(full_entry_name):
-            not_found_files[full_entry_name] = os.path.getsize(full_entry_name)
-
-    return not_found_files
+    return {
+        file_name: os.path.getsize(file_name) for file_name in __files_not_in_container(distdir(), file_names)
+        } if file_names else dict()
 
 
-def delete_files(files: list):
+def delete_files(files: iter):
     for file_name in files:
         os.remove(file_name)
 

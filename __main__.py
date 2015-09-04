@@ -10,9 +10,12 @@ import humansize
 
 
 def extract_file_name(manifest_string: str) -> str:
-    return manifest_string.split(' ', 2)[1] \
-        if manifest_string.startswith("DIST") and manifest_string.count(' ') > 2 \
-        else str()
+    prefix = "DIST "
+    if not manifest_string.startswith(prefix):
+        return str()
+
+    end = manifest_string.find(' ', len(prefix))
+    return manifest_string[len(prefix):end] if end > 0 else str()
 
 
 def load_files_from_manifest(manifest_file_name: str) -> iter:
